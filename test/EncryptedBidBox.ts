@@ -2,6 +2,7 @@ import { FhevmType } from "@fhevm/hardhat-plugin";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { expect } from "chai";
 import { ethers, fhevm } from "hardhat";
+import { EncryptedBidBox, EncryptedBidBox__factory } from "../types";
 
 type Signers = {
   deployer: HardhatEthersSigner;
@@ -11,7 +12,7 @@ type Signers = {
 
 describe("EncryptedBidBox", function () {
   let signers: Signers;
-  let contract: any;
+  let contract: EncryptedBidBox;
   let contractAddress: string;
 
   before(async function () {
@@ -30,8 +31,8 @@ describe("EncryptedBidBox", function () {
       this.skip();
     }
 
-    const factory = await ethers.getContractFactory("EncryptedBidBox");
-    contract = await factory.deploy();
+    const factory = (await ethers.getContractFactory("EncryptedBidBox")) as EncryptedBidBox__factory;
+    contract = (await factory.deploy()) as EncryptedBidBox;
     contractAddress = await contract.getAddress();
   });
 
