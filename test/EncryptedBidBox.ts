@@ -47,9 +47,7 @@ describe("EncryptedBidBox", function () {
       .add32(clearBid)
       .encrypt();
 
-    const tx = await contract
-      .connect(signers.alice)
-      .submitBid(encryptedBid.handles[0], encryptedBid.inputProof);
+    const tx = await contract.connect(signers.alice).submitBid(encryptedBid.handles[0], encryptedBid.inputProof);
 
     await tx.wait();
 
