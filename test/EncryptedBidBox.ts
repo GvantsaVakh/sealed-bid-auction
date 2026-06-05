@@ -81,7 +81,9 @@ describe("EncryptedBidBox", function () {
       .add32(aliceClearBid)
       .encrypt();
 
-    let tx = await contract.connect(signers.alice).submitBid(aliceEncryptedBid.handles[0], aliceEncryptedBid.inputProof);
+    let tx = await contract
+      .connect(signers.alice)
+      .submitBid(aliceEncryptedBid.handles[0], aliceEncryptedBid.inputProof);
     await tx.wait();
 
     const bobEncryptedBid = await fhevm
@@ -105,12 +107,7 @@ describe("EncryptedBidBox", function () {
       signers.alice,
     );
 
-    const decryptedBobBid = await fhevm.userDecryptEuint(
-      FhevmType.euint32,
-      bobStoredBid,
-      contractAddress,
-      signers.bob,
-    );
+    const decryptedBobBid = await fhevm.userDecryptEuint(FhevmType.euint32, bobStoredBid, contractAddress, signers.bob);
 
     expect(decryptedAliceBid).to.eq(aliceClearBid);
     expect(decryptedBobBid).to.eq(bobClearBid);
