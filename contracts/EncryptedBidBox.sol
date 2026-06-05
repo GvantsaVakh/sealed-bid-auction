@@ -7,23 +7,20 @@ import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 /// @title EncryptedBidBox
 /// @notice Small learning contract: stores one encrypted bid.
 contract EncryptedBidBox is ZamaEthereumConfig {
-    euint32 private encryptedBid;
-
-    address public lastBidder;
-    bool public hasBid;
+    mapping(address => euint32) private bids;
+    mapping(address => bool) public hasBid;
 
     function submitBid(externalEuint32 inputBid, bytes calldata inputProof) external {
         euint32 bid = FHE.fromExternal(inputBid, inputProof);
 
-        encryptedBid = bid;
-        lastBidder = msg.sender;
-        hasBid = true;
+        bids[msg.sender] = bid;
+        hasBid[msg.sender] = true;
 
-        FHE.allowThis(encryptedBid);
-        FHE.allow(encryptedBid, msg.sender);
+        FHE.allowThis(bids[msg.sender]);
+        FHE.allow(bids[msg.sender], msg.sender);
     }
 
-    function getEncryptedBid() external view returns (euint32) {
-        return encryptedBid;
+    function getEncryptedBid(address bidder) external view returns (euint32) {
+        return bids[bidder];
     }
 }
