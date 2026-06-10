@@ -1,110 +1,213 @@
-# FHEVM Hardhat Template
+# Sealed Bid Auction Using Fully Homomorphic Encryption (FHE)
 
-A Hardhat-based template for developing Fully Homomorphic Encryption (FHE) enabled Solidity smart contracts using the
-FHEVM protocol by Zama.
+A privacy-preserving sealed-bid auction built using Zama's fhEVM protocol. Bids remain encrypted throughout the auction, and the smart contract determines the winner without revealing individual bid values on-chain.
 
-## Quick Start
+## Overview
 
-For detailed instructions see:
-[FHEVM Hardhat Quick Start Tutorial](https://docs.zama.ai/protocol/solidity-guides/getting-started/quick-start-tutorial)
+Traditional blockchain auctions expose all bids publicly because transaction data is visible on-chain. This project demonstrates how Fully Homomorphic Encryption (FHE) can be used to preserve bid privacy while still allowing the smart contract to determine the highest bidder.
 
-### Prerequisites
+The contract stores encrypted bids, compares encrypted values using fhEVM operations, and identifies the winner without decrypting any bid during the auction.
 
-- **Node.js**: Version 20 or higher
-- **npm or yarn/pnpm**: Package manager
+## Features
 
-### Installation
+* Encrypted bid submission using `euint32`
+* Privacy-preserving winner determination
+* Encrypted highest bid tracking
+* Encrypted winner tracking
+* Auction deadline and finalization logic
+* Per-bidder encrypted bid storage
+* Deployment and testing on Sepolia
+* Full local test suite using Zama's mock environment
 
-1. **Install dependencies**
+## Contract Evolution
 
-   ```bash
-   npm install
-   ```
+The project was developed incrementally through several contracts:
 
-2. **Set up environment variables**
+1. **EncryptedBidBox**
 
-   ```bash
-   npx hardhat vars set MNEMONIC
+   * Stores encrypted bids per address
 
-   # Set your Infura API key for network access
-   npx hardhat vars set INFURA_API_KEY
+2. **EncryptedComparison**
 
-   # Optional: Set Etherscan API key for contract verification
-   npx hardhat vars set ETHERSCAN_API_KEY
-   ```
+   * Compares encrypted bids using `FHE.gt()`
 
-3. **Compile and test**
+3. **EncryptedHighestBid**
 
-   ```bash
-   npm run compile
-   npm run test
-   ```
+   * Tracks the highest encrypted bid using `FHE.select()`
 
-4. **Deploy to local network**
+4. **EncryptedAuctionCore**
 
-   ```bash
-   # Start a local FHEVM-ready node
-   npx hardhat node
-   # Deploy to local network
-   npx hardhat deploy --network localhost
-   ```
+   * Adds auction deadlines and active/inactive state
 
-5. **Deploy to Sepolia Testnet**
+5. **EncryptedAuctionWithWinner**
 
-   ```bash
-   # Deploy to Sepolia
-   npx hardhat deploy --network sepolia
-   # Verify contract on Etherscan
-   npx hardhat verify --network sepolia <CONTRACT_ADDRESS>
-   ```
+   * Tracks encrypted winner identifiers
 
-6. **Test on Sepolia Testnet**
+6. **EncryptedAuctionFinalizable**
 
-   ```bash
-   # Once deployed, you can run a simple test on Sepolia.
-   npx hardhat test --network sepolia
-   ```
+   * Adds auction finalization logic
 
-## 📁 Project Structure
+7. **SealedBidAuction**
 
-```
-fhevm-hardhat-template/
-├── contracts/           # Smart contract source files
-│   └── FHECounter.sol   # Example FHE counter contract
-├── deploy/              # Deployment scripts
-├── tasks/               # Hardhat custom tasks
-├── test/                # Test files
-├── hardhat.config.ts    # Hardhat configuration
-└── package.json         # Dependencies and scripts
+   * Final integrated implementation
+
+## How It Works
+
+### Bid Submission
+
+A bidder:
+
+1. Encrypts a bid locally using the fhEVM client.
+2. Generates a validity proof.
+3. Calls:
+
+```solidity
+submitBid(externalEuint32 inputBid, bytes inputProof)
 ```
 
-## 📜 Available Scripts
+The blockchain receives only encrypted data and proof information.
 
-| Script             | Description              |
-| ------------------ | ------------------------ |
-| `npm run compile`  | Compile all contracts    |
-| `npm run test`     | Run all tests            |
-| `npm run coverage` | Generate coverage report |
-| `npm run lint`     | Run linting checks       |
-| `npm run clean`    | Clean build artifacts    |
+### Winner Selection
 
-## 📚 Documentation
+The contract compares encrypted bids using:
 
-- [FHEVM Documentation](https://docs.zama.ai/fhevm)
-- [FHEVM Hardhat Setup Guide](https://docs.zama.ai/protocol/solidity-guides/getting-started/setup)
-- [FHEVM Testing Guide](https://docs.zama.ai/protocol/solidity-guides/development-guide/hardhat/write_test)
-- [FHEVM Hardhat Plugin](https://docs.zama.ai/protocol/solidity-guides/development-guide/hardhat)
+```solidity
+FHE.gt()
+FHE.select()
+```
 
-## 📄 License
+without revealing any plaintext values.
 
-This project is licensed under the BSD-3-Clause-Clear License. See the [LICENSE](LICENSE) file for details.
+### Finalization
 
-## 🆘 Support
+After the auction deadline:
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/zama-ai/fhevm/issues)
-- **Documentation**: [FHEVM Docs](https://docs.zama.ai)
-- **Community**: [Zama Discord](https://discord.gg/zama)
+```solidity
+endAuction()
+```
 
----
+is called.
 
-**Built with ❤️ by the Zama team**
+The highest encrypted bid and encrypted winner remain private, but decryption permission is granted to the owner for demonstration purposes.
+
+## Security Model
+
+### During the Auction
+
+* Bid values remain encrypted.
+* Highest bid remains encrypted.
+* Winner remains encrypted.
+* Public observers cannot determine bid amounts.
+
+### After Finalization
+
+* The owner can decrypt:
+
+  * Winning bid
+  * Winner identifier
+
+This design is intended for demonstration and testing.
+
+A production implementation should use threshold or gateway-based decryption rather than owner-based decryption.
+
+## Limitations
+
+### Re-bidding
+
+A bidder may overwrite a previous bid by submitting another encrypted bid.
+
+### No Sybil Resistance
+
+Users may create multiple Ethereum addresses and participate multiple times.
+
+### Owner-Based Decryption
+
+The current implementation grants decryption rights to the owner after finalization.
+
+### Manual Finalization
+
+The auction must be finalized through an explicit call to:
+
+```solidity
+endAuction()
+```
+
+### Public Bidder Addresses
+
+Bid values remain private, but bidder addresses are publicly visible on-chain.
+
+## Sepolia Deployment
+
+The contract was successfully deployed and tested on the Sepolia test network.
+
+Example deployment:
+
+* Contract Address:
+  `0xC9C4013e5C46F46c0e8E62365d7A286EBB0c479C`
+
+Example encrypted bid transaction:
+
+* Transaction Hash:
+  `0x05e7dbfe87e95d82b4c895b041b3d8a9e02564513ef761570aed77ec32189412`
+
+The transaction calldata contains encrypted values and proofs rather than plaintext bids.
+
+## Running Tests
+
+Run the full suite:
+
+```bash
+npm test
+```
+
+Run the demonstration:
+
+```bash
+npx hardhat test test/DemoSealedBidAuction.ts
+```
+
+Formatting:
+
+```bash
+npm run prettier:write
+```
+
+Linting:
+
+```bash
+npm run lint
+```
+
+## Demo Scenario
+
+The included demo performs the following auction:
+
+| Bidder  | Bid |
+| ------- | --- |
+| Alice   | 42  |
+| Bob     | 77  |
+| Charlie | 50  |
+
+All bids remain encrypted during execution.
+
+After finalization:
+
+* Winning Bid: 77
+* Winner: Bob
+
+## Future Work
+
+* Public publication of auction results after finalization
+* Threshold decryption instead of owner-based decryption
+* Bid deposits and anti-spam mechanisms
+* Stronger Sybil-resistance mechanisms
+* Automatic settlement and payment enforcement
+* Hidden bidder identities
+
+## Author
+
+**Gvantsa Vakhtangishvili**
+
+Privacy on Blockchain Course Project
+
+Built using Zama fhEVM and Hardhat.
