@@ -7,8 +7,6 @@ import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 /// @title SealedBidAuction
 /// @author Gvantsa Vakhtangishvili
 /// @notice Final sealed-bid auction contract using FHE-encrypted bids.
-/// @dev In local tests, the owner is allowed to decrypt the encrypted winner id and highest bid.
-/// In a production fhEVM deployment, final disclosure should be done through Gateway decryption.
 contract SealedBidAuction is ZamaEthereumConfig {
     /// @notice Thrown when trying to read highest bid or winner before any bid exists.
     error NoBidYet();
@@ -106,18 +104,12 @@ contract SealedBidAuction is ZamaEthereumConfig {
             hasAnyBid = true;
         } else {
             ebool isHigher = FHE.gt(bid, highestBid);
-
             highestBid = FHE.select(isHigher, bid, highestBid);
             encryptedWinnerId = FHE.select(isHigher, encryptedCurrentBidderId, encryptedWinnerId);
         }
 
         FHE.allowThis(highestBid);
         FHE.allowThis(encryptedWinnerId);
-
-        // Local-test permission only. In the final security model,
-        // result disclosure should happen only after finalization.
-        FHE.allow(highestBid, owner);
-        FHE.allow(encryptedWinnerId, owner);
 
         emit BidSubmitted(msg.sender, block.timestamp);
     }
@@ -127,16 +119,17 @@ contract SealedBidAuction is ZamaEthereumConfig {
         if (block.timestamp < auctionEndTime) {
             revert AuctionStillActive();
         }
-
         if (auctionEnded) {
             revert AuctionAlreadyFinalized();
         }
-
         if (!hasAnyBid) {
             revert NoBidYet();
         }
 
         auctionEnded = true;
+
+        FHE.allow(highestBid, owner);
+        FHE.allow(encryptedWinnerId, owner);
 
         emit AuctionFinalized(block.timestamp);
     }
