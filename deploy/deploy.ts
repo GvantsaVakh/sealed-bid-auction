@@ -7,7 +7,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   const deployedAuction = await deploy("SealedBidAuction", {
     from: deployer,
-    args: [300, "Rare NFT #42"],
+    args: [3600, "Rare NFT #42"],
     log: true,
   });
 
