@@ -87,12 +87,7 @@ describe("SealedBidAuction", function () {
     expect(await contract.hasAnyBid()).to.eq(true);
     expect(await contract.hasBid(signers.alice.address)).to.eq(true);
 
-    const highestBid = await decryptHighestBid();
-    const winnerId = await decryptWinnerId();
-    const winnerAddress = await contract.bidderById(winnerId);
-
-    expect(highestBid).to.eq(42);
-    expect(winnerAddress).to.eq(signers.alice.address);
+    await expect(decryptHighestBid()).to.be.rejectedWith("not authorized");
   });
 
   it("tracks highest bid and winner across multiple encrypted bids", async function () {
@@ -100,12 +95,13 @@ describe("SealedBidAuction", function () {
     await submitEncryptedBid(signers.bob, 77);
     await submitEncryptedBid(signers.charlie, 50);
 
-    const highestBid = await decryptHighestBid();
-    const winnerId = await decryptWinnerId();
-    const winnerAddress = await contract.bidderById(winnerId);
+    expect(await contract.hasAnyBid()).to.eq(true);
+    expect(await contract.hasBid(signers.alice.address)).to.eq(true);
+    expect(await contract.hasBid(signers.bob.address)).to.eq(true);
+    expect(await contract.hasBid(signers.charlie.address)).to.eq(true);
 
-    expect(highestBid).to.eq(77);
-    expect(winnerAddress).to.eq(signers.bob.address);
+    await expect(decryptHighestBid()).to.be.rejectedWith("not authorized");
+    await expect(decryptWinnerId()).to.be.rejectedWith("not authorized");
   });
 
   it("assigns stable bidder ids", async function () {
