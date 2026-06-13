@@ -11,7 +11,7 @@ async function main() {
 
   console.log("Bidder:", bidder.address);
   console.log("Contract:", contractAddress);
-  console.log("Bid:", bidAmount);
+  console.log("Plaintext bid locally before encryption:", bidAmount);
 
   const encryptedBid = await fhevm.createEncryptedInput(contractAddress, bidder.address).add32(bidAmount).encrypt();
 
@@ -19,9 +19,10 @@ async function main() {
 
   console.log("submitBid tx:", tx.hash);
 
-  await tx.wait();
+  const receipt = await tx.wait();
 
   console.log("Bid submitted successfully on Sepolia");
+  console.log("Confirmed in block:", receipt?.blockNumber);
 }
 
 main().catch((error) => {

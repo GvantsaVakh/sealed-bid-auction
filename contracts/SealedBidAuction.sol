@@ -125,7 +125,6 @@ contract SealedBidAuction is ZamaEthereumConfig {
         if (!hasAnyBid) {
             revert NoBidYet();
         }
-
         auctionEnded = true;
 
         FHE.allow(highestBid, owner);
@@ -163,7 +162,6 @@ contract SealedBidAuction is ZamaEthereumConfig {
         if (!hasAnyBid) {
             revert NoBidYet();
         }
-
         return encryptedWinnerId;
     }
 }
