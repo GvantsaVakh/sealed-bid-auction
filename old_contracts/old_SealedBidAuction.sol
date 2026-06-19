@@ -6,10 +6,9 @@ import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 
 /// @title SealedBidAuction
 /// @author Gvantsa Vakhtangishvili
-/// @notice Confidential Vickrey sealed-bid auction using FHE-encrypted bids.
-/// @dev Highest bidder wins, but the final price is the second-highest bid.
-contract SealedBidAuction is ZamaEthereumConfig {
-    /// @notice Thrown when trying to read highest bid, second-highest bid, or winner before any bid exists.
+/// @notice Final sealed-bid auction contract using FHE-encrypted bids.
+contract oldSealedBidAuction is ZamaEthereumConfig {
+    /// @notice Thrown when trying to read highest bid or winner before any bid exists.
     error NoBidYet();
 
     /// @notice Thrown when a bidder tries to bid after the auction ended.
@@ -21,10 +20,7 @@ contract SealedBidAuction is ZamaEthereumConfig {
     /// @notice Thrown when trying to finalize the auction more than once.
     error AuctionAlreadyFinalized();
 
-    /// @notice Thrown when the same address tries to submit more than one bid.
-    error BidAlreadySubmitted();
-
-    /// @notice Address allowed to decrypt auction result in local tests/demo.
+    /// @notice Address allowed to decrypt highest bid and winner id in local tests.
     address public owner;
 
     /// @notice Human-readable auction item name.
@@ -51,33 +47,25 @@ contract SealedBidAuction is ZamaEthereumConfig {
     /// @notice Next bidder id to assign.
     uint32 public nextBidderId = 1;
 
-    /// @notice Total number of submitted bids.
-    uint32 public bidCount;
-
     /// @notice Shows whether at least one bid has been submitted.
     bool public hasAnyBid;
 
     /// @notice Highest encrypted bid submitted so far.
     euint32 private highestBid;
 
-    /// @notice Second-highest encrypted bid submitted so far.
-    /// @dev In a Vickrey auction, this becomes the final price paid by the winner.
-    euint32 private secondHighestBid;
-
     /// @notice Encrypted id of the current highest bidder.
     euint32 private encryptedWinnerId;
 
     /// @notice Emitted when a bidder submits an encrypted bid.
     /// @param bidder Address of the bidder.
-    /// @param bidderId Public numeric id assigned to the bidder.
     /// @param timestamp Timestamp when the bid was submitted.
-    event BidSubmitted(address indexed bidder, uint32 indexed bidderId, uint256 indexed timestamp);
+    event BidSubmitted(address indexed bidder, uint256 indexed timestamp);
 
     /// @notice Emitted when the auction is finalized.
     /// @param timestamp Timestamp when the auction was finalized.
     event AuctionFinalized(uint256 indexed timestamp);
 
-    /// @notice Creates a confidential Vickrey sealed-bid auction.
+    /// @notice Creates a sealed-bid auction.
     /// @param biddingDuration Number of seconds the auction accepts bids.
     /// @param auctionItemName Human-readable auction item name.
     constructor(uint256 biddingDuration, string memory auctionItemName) {
@@ -86,16 +74,12 @@ contract SealedBidAuction is ZamaEthereumConfig {
         itemName = auctionItemName;
     }
 
-    /// @notice Stores caller's encrypted bid and privately updates highest bid, second-highest bid, and winner id.
+    /// @notice Stores caller's encrypted bid and updates encrypted highest bid and encrypted winner id.
     /// @param inputBid Encrypted bid value.
     /// @param inputProof Proof that the encrypted input is valid.
     function submitBid(externalEuint32 inputBid, bytes calldata inputProof) external {
         if (block.timestamp > auctionEndTime || block.timestamp == auctionEndTime || auctionEnded) {
             revert AuctionAlreadyEnded();
-        }
-
-        if (hasBid[msg.sender]) {
-            revert BidAlreadySubmitted();
         }
 
         if (bidderIds[msg.sender] == 0) {
@@ -105,70 +89,45 @@ contract SealedBidAuction is ZamaEthereumConfig {
         }
 
         uint32 currentBidderId = bidderIds[msg.sender];
-
         euint32 bid = FHE.fromExternal(inputBid, inputProof);
         euint32 encryptedCurrentBidderId = FHE.asEuint32(currentBidderId);
 
         bids[msg.sender] = bid;
         hasBid[msg.sender] = true;
-        ++bidCount;
 
         FHE.allowThis(bids[msg.sender]);
         FHE.allow(bids[msg.sender], msg.sender);
 
-        _updateAuctionState(bid, encryptedCurrentBidderId);
-
-        emit BidSubmitted(msg.sender, currentBidderId, block.timestamp);
-    }
-
-    function _updateAuctionState(euint32 bid, euint32 encryptedCurrentBidderId) internal {
         if (!hasAnyBid) {
             highestBid = bid;
-            secondHighestBid = FHE.asEuint32(0);
             encryptedWinnerId = encryptedCurrentBidderId;
             hasAnyBid = true;
         } else {
-            ebool isHigherThanHighest = FHE.gt(bid, highestBid);
-            ebool isHigherThanSecondHighest = FHE.gt(bid, secondHighestBid);
-
-            euint32 updatedSecondHighest = FHE.select(
-                isHigherThanHighest,
-                highestBid,
-                FHE.select(isHigherThanSecondHighest, bid, secondHighestBid)
-            );
-
-            euint32 updatedHighest = FHE.select(isHigherThanHighest, bid, highestBid);
-            euint32 updatedWinnerId = FHE.select(isHigherThanHighest, encryptedCurrentBidderId, encryptedWinnerId);
-
-            secondHighestBid = updatedSecondHighest;
-            highestBid = updatedHighest;
-            encryptedWinnerId = updatedWinnerId;
+            ebool isHigher = FHE.gt(bid, highestBid);
+            highestBid = FHE.select(isHigher, bid, highestBid);
+            encryptedWinnerId = FHE.select(isHigher, encryptedCurrentBidderId, encryptedWinnerId);
         }
 
         FHE.allowThis(highestBid);
-        FHE.allowThis(secondHighestBid);
         FHE.allowThis(encryptedWinnerId);
+
+        emit BidSubmitted(msg.sender, block.timestamp);
     }
 
     /// @notice Finalizes the auction after the bidding deadline.
-    /// @dev After finalization, owner is allowed to decrypt highest bid, second-highest bid, and winner id.
     function endAuction() external {
         if (block.timestamp < auctionEndTime) {
             revert AuctionStillActive();
         }
-
         if (auctionEnded) {
             revert AuctionAlreadyFinalized();
         }
-
         if (!hasAnyBid) {
             revert NoBidYet();
         }
-
         auctionEnded = true;
 
         FHE.allow(highestBid, owner);
-        FHE.allow(secondHighestBid, owner);
         FHE.allow(encryptedWinnerId, owner);
 
         emit AuctionFinalized(block.timestamp);
@@ -197,24 +156,12 @@ contract SealedBidAuction is ZamaEthereumConfig {
         return highestBid;
     }
 
-    /// @notice Returns the current encrypted second-highest bid.
-    /// @dev In this Vickrey auction, this value is the price paid by the winner.
-    /// @return Encrypted second-highest bid value.
-    function getSecondHighestBid() external view returns (euint32) {
-        if (!hasAnyBid) {
-            revert NoBidYet();
-        }
-
-        return secondHighestBid;
-    }
-
     /// @notice Returns encrypted id of the current winner.
     /// @return Encrypted winner id.
     function getEncryptedWinnerId() external view returns (euint32) {
         if (!hasAnyBid) {
             revert NoBidYet();
         }
-
         return encryptedWinnerId;
     }
 }

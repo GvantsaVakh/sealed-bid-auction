@@ -12,7 +12,7 @@ type Signers = {
   charlie: HardhatEthersSigner;
 };
 
-describe("SealedBidAuction - Confidential Vickrey Auction", function () {
+describe("SealedBidAuction", function () {
   let signers: Signers;
   let contract: SealedBidAuction;
   let contractAddress: string;
@@ -22,32 +22,17 @@ describe("SealedBidAuction - Confidential Vickrey Auction", function () {
 
   async function submitEncryptedBid(bidder: HardhatEthersSigner, clearBid: number) {
     const encryptedBid = await fhevm.createEncryptedInput(contractAddress, bidder.address).add32(clearBid).encrypt();
-
     const tx = await contract.connect(bidder).submitBid(encryptedBid.handles[0], encryptedBid.inputProof);
-
     await tx.wait();
   }
 
   async function decryptHighestBid() {
     const encryptedHighestBid = await contract.getHighestBid();
-
     return await fhevm.userDecryptEuint(FhevmType.euint32, encryptedHighestBid, contractAddress, signers.deployer);
-  }
-
-  async function decryptSecondHighestBid() {
-    const encryptedSecondHighestBid = await contract.getSecondHighestBid();
-
-    return await fhevm.userDecryptEuint(
-      FhevmType.euint32,
-      encryptedSecondHighestBid,
-      contractAddress,
-      signers.deployer,
-    );
   }
 
   async function decryptWinnerId() {
     const encryptedWinnerId = await contract.getEncryptedWinnerId();
-
     return await fhevm.userDecryptEuint(FhevmType.euint32, encryptedWinnerId, contractAddress, signers.deployer);
   }
 
@@ -84,42 +69,33 @@ describe("SealedBidAuction - Confidential Vickrey Auction", function () {
     expect(await contract.itemName()).to.eq(itemName);
     expect(await contract.hasAnyBid()).to.eq(false);
     expect(await contract.auctionEnded()).to.eq(false);
-    expect(await contract.bidCount()).to.eq(0);
     expect(await contract.isActive()).to.eq(true);
   });
 
-  it("rejects reading auction result before any bid exists", async function () {
+  it("rejects reading highest bid and winner before any bid exists", async function () {
     await expect(contract.getHighestBid()).to.be.revertedWithCustomError(contract, "NoBidYet");
-    await expect(contract.getSecondHighestBid()).to.be.revertedWithCustomError(contract, "NoBidYet");
     await expect(contract.getEncryptedWinnerId()).to.be.revertedWithCustomError(contract, "NoBidYet");
   });
 
   it("accepts encrypted bid while auction is active", async function () {
     await expect(submitEncryptedBid(signers.alice, 42)).to.not.be.rejected;
+    expect(await contract.hasAnyBid()).to.eq(true);
+    expect(await contract.hasBid(signers.alice.address)).to.eq(true);
+    await expect(decryptHighestBid()).to.be.rejectedWith("not authorized");
+  });
+
+  it("tracks highest bid and winner across multiple encrypted bids", async function () {
+    await submitEncryptedBid(signers.alice, 42);
+    await submitEncryptedBid(signers.bob, 77);
+    await submitEncryptedBid(signers.charlie, 50);
 
     expect(await contract.hasAnyBid()).to.eq(true);
     expect(await contract.hasBid(signers.alice.address)).to.eq(true);
-    expect(await contract.bidCount()).to.eq(1);
+    expect(await contract.hasBid(signers.bob.address)).to.eq(true);
+    expect(await contract.hasBid(signers.charlie.address)).to.eq(true);
 
-    const encryptedHighestBid = await contract.getHighestBid();
-    const encryptedSecondHighestBid = await contract.getSecondHighestBid();
-    const encryptedWinnerId = await contract.getEncryptedWinnerId();
-
-    expect(encryptedHighestBid).to.not.eq(0);
-    expect(encryptedSecondHighestBid).to.not.eq(undefined);
-    expect(encryptedWinnerId).to.not.eq(0);
-
-    expect(await contract.auctionEnded()).to.eq(false);
-  });
-
-  it("rejects duplicate bid from same address", async function () {
-    await submitEncryptedBid(signers.alice, 42);
-
-    const encryptedBid = await fhevm.createEncryptedInput(contractAddress, signers.alice.address).add32(100).encrypt();
-
-    await expect(
-      contract.connect(signers.alice).submitBid(encryptedBid.handles[0], encryptedBid.inputProof),
-    ).to.be.revertedWithCustomError(contract, "BidAlreadySubmitted");
+    await expect(decryptHighestBid()).to.be.rejectedWith("not authorized");
+    await expect(decryptWinnerId()).to.be.rejectedWith("not authorized");
   });
 
   it("assigns stable bidder ids", async function () {
@@ -128,37 +104,12 @@ describe("SealedBidAuction - Confidential Vickrey Auction", function () {
 
     expect(await contract.bidderIds(signers.alice.address)).to.eq(1);
     expect(await contract.bidderIds(signers.bob.address)).to.eq(2);
-
     expect(await contract.bidderById(1)).to.eq(signers.alice.address);
     expect(await contract.bidderById(2)).to.eq(signers.bob.address);
   });
 
-  it("tracks highest bid and second-highest bid as encrypted values before finalization", async function () {
-    await submitEncryptedBid(signers.alice, 42);
-    await submitEncryptedBid(signers.bob, 77);
-    await submitEncryptedBid(signers.charlie, 50);
-
-    expect(await contract.hasAnyBid()).to.eq(true);
-    expect(await contract.bidCount()).to.eq(3);
-
-    expect(await contract.hasBid(signers.alice.address)).to.eq(true);
-    expect(await contract.hasBid(signers.bob.address)).to.eq(true);
-    expect(await contract.hasBid(signers.charlie.address)).to.eq(true);
-
-    const encryptedHighestBid = await contract.getHighestBid();
-    const encryptedSecondHighestBid = await contract.getSecondHighestBid();
-    const encryptedWinnerId = await contract.getEncryptedWinnerId();
-
-    expect(encryptedHighestBid).to.not.eq(0);
-    expect(encryptedSecondHighestBid).to.not.eq(0);
-    expect(encryptedWinnerId).to.not.eq(0);
-
-    expect(await contract.auctionEnded()).to.eq(false);
-  });
-
   it("cannot end auction before deadline", async function () {
     await submitEncryptedBid(signers.alice, 42);
-
     await expect(contract.endAuction()).to.be.revertedWithCustomError(contract, "AuctionStillActive");
   });
 
@@ -170,7 +121,6 @@ describe("SealedBidAuction - Confidential Vickrey Auction", function () {
 
   it("can end auction after deadline if bids exist", async function () {
     await submitEncryptedBid(signers.alice, 42);
-
     await finishAuction();
 
     expect(await contract.auctionEnded()).to.eq(true);
@@ -187,15 +137,13 @@ describe("SealedBidAuction - Confidential Vickrey Auction", function () {
 
   it("rejects bids after auction deadline", async function () {
     await time.increase(auctionDuration + 1);
-
     const encryptedBid = await fhevm.createEncryptedInput(contractAddress, signers.alice.address).add32(42).encrypt();
-
     await expect(
       contract.connect(signers.alice).submitBid(encryptedBid.handles[0], encryptedBid.inputProof),
     ).to.be.revertedWithCustomError(contract, "AuctionAlreadyEnded");
   });
 
-  it("finalizes Vickrey auction: highest bidder wins but pays second-highest price", async function () {
+  it("finalizes auction and reveals Bob as winner in local test", async function () {
     await submitEncryptedBid(signers.alice, 42);
     await submitEncryptedBid(signers.bob, 77);
     await submitEncryptedBid(signers.charlie, 50);
@@ -203,73 +151,20 @@ describe("SealedBidAuction - Confidential Vickrey Auction", function () {
     await finishAuction();
 
     const highestBid = await decryptHighestBid();
-    const secondHighestBid = await decryptSecondHighestBid();
     const winnerId = await decryptWinnerId();
     const winnerAddress = await contract.bidderById(winnerId);
 
     expect(await contract.auctionEnded()).to.eq(true);
-
     expect(highestBid).to.eq(77);
-    expect(secondHighestBid).to.eq(50);
     expect(winnerAddress).to.eq(signers.bob.address);
   });
 
-  it("handles Vickrey logic when bids arrive in descending order", async function () {
-    await submitEncryptedBid(signers.alice, 100);
-    await submitEncryptedBid(signers.bob, 80);
-    await submitEncryptedBid(signers.charlie, 60);
-
-    await finishAuction();
-
-    const highestBid = await decryptHighestBid();
-    const secondHighestBid = await decryptSecondHighestBid();
-    const winnerId = await decryptWinnerId();
-    const winnerAddress = await contract.bidderById(winnerId);
-
-    expect(highestBid).to.eq(100);
-    expect(secondHighestBid).to.eq(80);
-    expect(winnerAddress).to.eq(signers.alice.address);
-  });
-
-  it("handles Vickrey logic when bids arrive in ascending order", async function () {
-    await submitEncryptedBid(signers.alice, 10);
-    await submitEncryptedBid(signers.bob, 40);
-    await submitEncryptedBid(signers.charlie, 90);
-
-    await finishAuction();
-
-    const highestBid = await decryptHighestBid();
-    const secondHighestBid = await decryptSecondHighestBid();
-    const winnerId = await decryptWinnerId();
-    const winnerAddress = await contract.bidderById(winnerId);
-
-    expect(highestBid).to.eq(90);
-    expect(secondHighestBid).to.eq(40);
-    expect(winnerAddress).to.eq(signers.charlie.address);
-  });
-
-  it("single-bidder auction has highest bid equal to bidder bid and second-highest price equal to zero", async function () {
-    await submitEncryptedBid(signers.alice, 42);
-
-    await finishAuction();
-
-    const highestBid = await decryptHighestBid();
-    const secondHighestBid = await decryptSecondHighestBid();
-    const winnerId = await decryptWinnerId();
-    const winnerAddress = await contract.bidderById(winnerId);
-
-    expect(highestBid).to.eq(42);
-    expect(secondHighestBid).to.eq(0);
-    expect(winnerAddress).to.eq(signers.alice.address);
-  });
-
-  it("stores each bidder's encrypted bid separately and only bidder can decrypt own bid", async function () {
+  it("stores each bidder's encrypted bid separately", async function () {
     await submitEncryptedBid(signers.alice, 42);
     await submitEncryptedBid(signers.bob, 77);
 
     const aliceEncryptedBid = await contract.getEncryptedBid(signers.alice.address);
     const bobEncryptedBid = await contract.getEncryptedBid(signers.bob.address);
-
     const aliceBid = await fhevm.userDecryptEuint(FhevmType.euint32, aliceEncryptedBid, contractAddress, signers.alice);
     const bobBid = await fhevm.userDecryptEuint(FhevmType.euint32, bobEncryptedBid, contractAddress, signers.bob);
 

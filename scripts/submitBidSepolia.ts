@@ -3,7 +3,7 @@ import { ethers, fhevm } from "hardhat";
 async function main() {
   await fhevm.initializeCLIApi();
 
-  const contractAddress = "0xC9C4013e5C46F46c0e8E62365d7A286EBB0c479C";
+  const contractAddress = "0x89123AEddA7706df3F4cDC4c37F73DcdE53b4377";
   const bidAmount = 42;
 
   const [bidder] = await ethers.getSigners();

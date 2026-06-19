@@ -21,6 +21,8 @@ export default tseslint.config(
       "*.env",
       "*.log",
       "coverage.json",
+      "old_tests/**",
+      "old_contracts/**",
     ],
   },
   eslint.configs.recommended,
