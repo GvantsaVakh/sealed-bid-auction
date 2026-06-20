@@ -12,6 +12,12 @@ coverage
 dist
 node_modules
 types
+typechain-types
+frontend/node_modules
+frontend/dist
+frontend/.vite
+old_tests
+old_contracts
 
 # files
 *.env

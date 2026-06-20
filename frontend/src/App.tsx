@@ -21,14 +21,16 @@ function App() {
   const [logs, setLogs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AuctionResult | null>(null);
+  const [hasCurrentAccountBid, setHasCurrentAccountBid] = useState(false);
 
   const contractAddress = useMemo(() => CONTRACT_ADDRESS, []);
+  const isOwner = Boolean(account && owner !== "-" && account.toLowerCase() === owner.toLowerCase());
 
   function addLog(message: string) {
     setLogs((previous) => [`${new Date().toLocaleTimeString()} — ${message}`, ...previous]);
   }
 
-  async function refreshAuctionState() {
+  async function refreshAuctionState(accountOverride?: string) {
     try {
       const address = requireContractAddress();
       const contract = await getAuctionContract(address);
@@ -46,6 +48,15 @@ function App() {
       setIsActive(active);
       setAuctionEnded(ended);
       setBidCount(count.toString());
+
+      const accountToCheck = accountOverride ?? account;
+
+      if (accountToCheck) {
+        const alreadyBid = await contract.hasBid(accountToCheck);
+        setHasCurrentAccountBid(alreadyBid);
+      } else {
+        setHasCurrentAccountBid(false);
+      }
     } catch (error) {
       addLog(`Could not refresh auction state: ${String(error)}`);
     }
@@ -54,6 +65,7 @@ function App() {
   async function handleConnect() {
     try {
       setLoading(true);
+
       const connectedAccount = await connectWallet();
       setAccount(connectedAccount);
       addLog(`Wallet connected: ${shortAddress(connectedAccount)}`);
@@ -62,7 +74,7 @@ function App() {
       await getFheInstance();
       addLog("FHE SDK ready.");
 
-      await refreshAuctionState();
+      await refreshAuctionState(connectedAccount);
     } catch (error) {
       addLog(`Connection failed: ${String(error)}`);
     } finally {
@@ -71,11 +83,21 @@ function App() {
   }
 
   async function handleSubmitBid() {
-    try {
-      setLoading(true);
+    setLoading(true);
 
+    try {
       if (!account) {
         throw new Error("Connect wallet first.");
+      }
+
+      if (!isActive) {
+        addLog("Bid blocked: bidding is closed because the auction is not active.");
+        return;
+      }
+
+      if (hasCurrentAccountBid) {
+        addLog("Bid blocked: this wallet has already submitted a bid. Each address can bid only once.");
+        return;
       }
 
       const address = requireContractAddress();
@@ -103,7 +125,7 @@ function App() {
       addLog("Encrypted bid submitted successfully.");
       setBidAmount("");
 
-      await refreshAuctionState();
+      await refreshAuctionState(account);
     } catch (error) {
       addLog(`Bid failed: ${String(error)}`);
     } finally {
@@ -114,6 +136,21 @@ function App() {
   async function handleFinalizeAuction() {
     try {
       setLoading(true);
+
+      if (isActive) {
+        addLog("Finalize blocked: auction is still active. Wait until the deadline passes.");
+        return;
+      }
+
+      if (auctionEnded) {
+        addLog("Finalize blocked: auction is already finalized.");
+        return;
+      }
+
+      if (bidCount === "0") {
+        addLog("Finalize blocked: there are no bids.");
+        return;
+      }
 
       const address = requireContractAddress();
       const contract = await getAuctionContract(address);
@@ -126,7 +163,7 @@ function App() {
       await tx.wait();
 
       addLog("Auction finalized.");
-      await refreshAuctionState();
+      await refreshAuctionState(account);
     } catch (error) {
       addLog(`Finalize failed: ${String(error)}`);
     } finally {
@@ -140,6 +177,16 @@ function App() {
 
       if (!account) {
         throw new Error("Connect wallet first.");
+      }
+
+      if (!auctionEnded) {
+        addLog("Decrypt blocked: auction must be finalized first.");
+        return;
+      }
+
+      if (!isOwner) {
+        addLog("Decrypt blocked: only the auction owner can decrypt the final result.");
+        return;
       }
 
       const address = requireContractAddress();
@@ -197,7 +244,7 @@ function App() {
 
       <section className="grid">
         <div className="card">
-          <h2>Auction Info</h2>     
+          <h2>Auction Info</h2>
 
           <div className="infoRow">
             <span>Item</span>
@@ -234,7 +281,7 @@ function App() {
             <strong>{contractAddress ? shortAddress(contractAddress) : "Missing .env"}</strong>
           </div>
 
-          <button onClick={refreshAuctionState} disabled={loading}>
+          <button onClick={() => void refreshAuctionState()} disabled={loading}>
             Refresh state
           </button>
         </div>
@@ -245,6 +292,7 @@ function App() {
           {account ? (
             <p>
               Connected as <strong>{shortAddress(account)}</strong>
+              {isOwner && <span className="green"> {" "}(owner)</span>}
             </p>
           ) : (
             <p>Connect MetaMask on Sepolia to submit encrypted bids.</p>
@@ -267,10 +315,17 @@ function App() {
             onChange={(event) => setBidAmount(event.target.value)}
             placeholder="Example: 77"
             inputMode="numeric"
+            disabled={loading || !account || !isActive || hasCurrentAccountBid}
           />
 
-          <button onClick={handleSubmitBid} disabled={loading || !account || !isActive}>
-            Encrypt & Submit Bid
+          <button disabled={loading || !account || !isActive || hasCurrentAccountBid} onClick={handleSubmitBid}>
+            {!account
+              ? "Connect Wallet First"
+              : !isActive
+                ? "Auction Not Active"
+                : hasCurrentAccountBid
+                  ? "Bid Already Submitted"
+                  : "Encrypt & Submit Bid"}
           </button>
         </div>
 
@@ -281,12 +336,12 @@ function App() {
             After the deadline, finalize the auction. Then the allowed owner account can decrypt the result.
           </p>
 
-          <button onClick={handleFinalizeAuction} disabled={loading || auctionEnded}>
-            Finalize Auction
+          <button disabled={loading || isActive || auctionEnded || bidCount === "0"} onClick={handleFinalizeAuction}>
+            {isActive ? "Auction Still Active" : auctionEnded ? "Already Finalized" : "Finalize Auction"}
           </button>
 
-          <button onClick={handleDecryptResult} disabled={loading || !auctionEnded}>
-            Decrypt Result
+          <button onClick={handleDecryptResult} disabled={loading || !auctionEnded || !isOwner}>
+            {!auctionEnded ? "Finalize First" : !isOwner ? "Owner Only" : "Decrypt Result"}
           </button>
         </div>
       </section>

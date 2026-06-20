@@ -21,18 +21,18 @@ export async function getFheInstance() {
     kmsParams: "/kms_lib_bg.wasm",
   });
 
-    const ethereum = window.ethereum;
+  const ethereum = window.ethereum;
 
-    if (!ethereum) {
+  if (!ethereum) {
     throw new Error("MetaMask is not available.");
-    }
+  }
 
-    fheInstance = await createInstance({
+  fheInstance = await createInstance({
     ...SepoliaConfig,
     network: ethereum as any,
     relayerUrl: "https://relayer.testnet.zama.org",
     gatewayChainId: 10901,
-    });
+  });
 
   return fheInstance;
 }

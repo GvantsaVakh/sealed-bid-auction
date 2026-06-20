@@ -23,6 +23,8 @@ export default tseslint.config(
       "coverage.json",
       "old_tests/**",
       "old_contracts/**",
+      "frontend/**",
+
     ],
   },
   eslint.configs.recommended,
