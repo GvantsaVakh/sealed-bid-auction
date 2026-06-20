@@ -24,6 +24,7 @@ export default tseslint.config(
       "old_tests/**",
       "old_contracts/**",
       "frontend/**",
+      "old_tasks/**",
 
     ],
   },

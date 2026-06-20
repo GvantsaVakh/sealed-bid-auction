@@ -18,6 +18,7 @@ frontend/dist
 frontend/.vite
 old_tests
 old_contracts
+old_tasks
 
 # files
 *.env
