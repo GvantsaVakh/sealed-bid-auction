@@ -1,0 +1,31 @@
+{
+  "name": "confidential-vickrey-auction-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "@zama-fhe/relayer-sdk": "^0.4.4",
+    "buffer": "^6.0.3",
+    "ethers": "^6.13.5",
+    "events": "^3.3.0",
+    "keccak": "^3.0.4",
+    "process": "^0.11.10",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "stream-browserify": "^3.0.0",
+    "typescript": "^5.7.2",
+    "util": "^0.12.5",
+    "vite": "^6.0.5",
+    "vite-plugin-node-polyfills": "^0.28.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2"
+  }
+}
