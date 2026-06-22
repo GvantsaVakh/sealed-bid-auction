@@ -22,6 +22,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AuctionResult | null>(null);
   const [hasCurrentAccountBid, setHasCurrentAccountBid] = useState(false);
+  const [resultPublished, setResultPublished] = useState(false);
 
   const contractAddress = useMemo(() => CONTRACT_ADDRESS, []);
   const isOwner = Boolean(account && owner !== "-" && account.toLowerCase() === owner.toLowerCase());
@@ -35,12 +36,13 @@ function App() {
       const address = requireContractAddress();
       const contract = await getAuctionContract(address);
 
-      const [name, auctionOwner, active, ended, count] = await Promise.all([
+      const [name, auctionOwner, active, ended, count, published] = await Promise.all([
         contract.itemName(),
         contract.owner(),
         contract.isActive(),
         contract.auctionEnded(),
         contract.bidCount(),
+        contract.resultPublished(),
       ]);
 
       setItemName(name);
@@ -48,6 +50,7 @@ function App() {
       setIsActive(active);
       setAuctionEnded(ended);
       setBidCount(count.toString());
+      setResultPublished(published);
 
       const accountToCheck = accountOverride ?? account;
 
@@ -225,6 +228,60 @@ function App() {
     }
   }
 
+  async function handlePublishResult() {
+    try {
+      setLoading(true);
+
+      if (!account) {
+        throw new Error("Connect wallet first.");
+      }
+
+      if (!isOwner) {
+        addLog("Publish blocked: only the auction owner can publish the result.");
+        return;
+      }
+
+      if (!auctionEnded) {
+        addLog("Publish blocked: auction must be finalized first.");
+        return;
+      }
+
+      if (!result) {
+        addLog("Publish blocked: decrypt the result first.");
+        return;
+      }
+
+      if (resultPublished) {
+        addLog("Publish blocked: result is already published on-chain.");
+        return;
+      }
+
+      const address = requireContractAddress();
+      const contract = await getAuctionContract(address);
+
+      addLog("Publishing decrypted result on-chain...");
+
+      const tx = await contract.publishResult(
+        Number(result.winnerId),
+        Number(result.highestBid),
+        Number(result.secondHighestBid),
+      );
+
+      addLog(`Publish transaction sent: ${tx.hash}`);
+
+      await tx.wait();
+
+      addLog("Result published on-chain. Everyone can now read the winner publicly.");
+      setResultPublished(true);
+
+      await refreshAuctionState(account);
+    } catch (error) {
+      addLog(`Publish failed: ${String(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (contractAddress && contractAddress !== "0xYourDeployedSealedBidAuctionAddress") {
       void refreshAuctionState();
@@ -269,6 +326,11 @@ function App() {
           <div className="infoRow">
             <span>Bid count</span>
             <strong>{bidCount}</strong>
+          </div>
+
+          <div className="infoRow">
+            <span>Result published</span>
+            <strong>{resultPublished ? "Yes" : "No"}</strong>
           </div>
 
           <div className="infoRow">
@@ -375,6 +437,10 @@ function App() {
           <p className="success">
             Winner pays {result.secondHighestBid}, not {result.highestBid}.
           </p>
+
+          <button onClick={handlePublishResult} disabled={loading || !isOwner || !auctionEnded || resultPublished}>
+            {resultPublished ? "Result Already Published" : "Publish Result On-chain"}
+          </button>
         </section>
       )}
 

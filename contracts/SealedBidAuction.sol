@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+/* solhint-disable max-states-count, gas-indexed-events */
+
 import {FHE, ebool, euint32, externalEuint32} from "@fhevm/solidity/lib/FHE.sol";
 import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 
@@ -21,10 +23,22 @@ contract SealedBidAuction is ZamaEthereumConfig {
     /// @notice Thrown when trying to finalize the auction more than once.
     error AuctionAlreadyFinalized();
 
+    /// @notice Thrown when a function requires the auction to already be finalized.
+    error AuctionNotEnded();
+
     /// @notice Thrown when the same address tries to submit more than one bid.
     error BidAlreadySubmitted();
 
-    /// @notice Address allowed to decrypt auction result in local tests/demo.
+    /// @notice Thrown when a non-owner tries to call an owner-only function.
+    error OnlyOwner();
+
+    /// @notice Thrown when owner tries to publish result more than once.
+    error ResultAlreadyPublished();
+
+    /// @notice Thrown when owner tries to publish a winner id that does not map to a bidder.
+    error InvalidWinnerId();
+
+    /// @notice Address allowed to decrypt auction result.
     address public owner;
 
     /// @notice Human-readable auction item name.
@@ -67,6 +81,21 @@ contract SealedBidAuction is ZamaEthereumConfig {
     /// @notice Encrypted id of the current highest bidder.
     euint32 private encryptedWinnerId;
 
+    /// @notice Publicly published winner id after owner reveals result.
+    uint32 public publicWinnerId;
+
+    /// @notice Publicly published winner address after owner reveals result.
+    address public publicWinner;
+
+    /// @notice Publicly published highest bid after owner reveals result.
+    uint32 public publicHighestBid;
+
+    /// @notice Publicly published Vickrey price after owner reveals result.
+    uint32 public publicVickreyPrice;
+
+    /// @notice Shows whether final result has been published on-chain.
+    bool public resultPublished;
+
     /// @notice Emitted when a bidder submits an encrypted bid.
     /// @param bidder Address of the bidder.
     /// @param bidderId Public numeric id assigned to the bidder.
@@ -77,6 +106,13 @@ contract SealedBidAuction is ZamaEthereumConfig {
     /// @param timestamp Timestamp when the auction was finalized.
     event AuctionFinalized(uint256 indexed timestamp);
 
+    /// @notice Emitted when owner publishes decrypted final result on-chain.
+    /// @param winnerId Public id of the winning bidder.
+    /// @param winner Address of the winning bidder.
+    /// @param highestBid Highest bid value.
+    /// @param vickreyPrice Second-highest bid value, paid by the winner.
+    event ResultPublished(uint32 winnerId, address winner, uint32 highestBid, uint32 vickreyPrice);
+
     /// @notice Creates a confidential Vickrey sealed-bid auction.
     /// @param biddingDuration Number of seconds the auction accepts bids.
     /// @param auctionItemName Human-readable auction item name.
@@ -84,6 +120,12 @@ contract SealedBidAuction is ZamaEthereumConfig {
         owner = msg.sender;
         auctionEndTime = block.timestamp + biddingDuration;
         itemName = auctionItemName;
+    }
+
+    /// @notice Restricts function access to the auction owner.
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert OnlyOwner();
+        _;
     }
 
     /// @notice Stores caller's encrypted bid and privately updates highest bid, second-highest bid, and winner id.
@@ -121,6 +163,9 @@ contract SealedBidAuction is ZamaEthereumConfig {
         emit BidSubmitted(msg.sender, currentBidderId, block.timestamp);
     }
 
+    /// @notice Privately updates encrypted highest bid, second-highest bid, and winner id.
+    /// @param bid Newly submitted encrypted bid.
+    /// @param encryptedCurrentBidderId Encrypted public id of the bidder.
     function _updateAuctionState(euint32 bid, euint32 encryptedCurrentBidderId) internal {
         if (!hasAnyBid) {
             highestBid = bid;
@@ -172,6 +217,35 @@ contract SealedBidAuction is ZamaEthereumConfig {
         FHE.allow(encryptedWinnerId, owner);
 
         emit AuctionFinalized(block.timestamp);
+    }
+
+    /// @notice Publishes the decrypted auction result on-chain after owner decrypts it off-chain.
+    /// @dev This is an owner-published reveal. A production version should use a trust-minimized gateway callback.
+    /// @param winnerId Decrypted winner id.
+    /// @param highestBidPlain Decrypted highest bid.
+    /// @param vickreyPricePlain Decrypted second-highest bid, which is the Vickrey price.
+    function publishResult(uint32 winnerId, uint32 highestBidPlain, uint32 vickreyPricePlain) external onlyOwner {
+        if (!auctionEnded) {
+            revert AuctionNotEnded();
+        }
+
+        if (resultPublished) {
+            revert ResultAlreadyPublished();
+        }
+
+        address winner = bidderById[winnerId];
+
+        if (winner == address(0)) {
+            revert InvalidWinnerId();
+        }
+
+        publicWinnerId = winnerId;
+        publicWinner = winner;
+        publicHighestBid = highestBidPlain;
+        publicVickreyPrice = vickreyPricePlain;
+        resultPublished = true;
+
+        emit ResultPublished(winnerId, winner, highestBidPlain, vickreyPricePlain);
     }
 
     /// @notice Returns true if the auction still accepts bids.
