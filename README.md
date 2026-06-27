@@ -534,6 +534,4 @@ cp artifacts/contracts/SealedBidAuction.sol/SealedBidAuction.json frontend/src/a
 
 Privacy on Blockchain Course Project
 
-Project structure and 
-
 Built using Zama fhEVM, Solidity, Hardhat, React, Vite, MetaMask, and Sepolia Testnet.
