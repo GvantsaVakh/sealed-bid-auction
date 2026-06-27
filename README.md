@@ -1,5 +1,7 @@
 # Confidential Vickrey Auction Using Fully Homomorphic Encryption (FHE)
 
+p.s. კონტრაქტის დოკუმენტაცია დაიწერა Solidity NatSpec კომენტარების გამოყენებით. public და external ფუნქციებთან დამატებულია @notice აღწერები, რომლებიც ხსნის ფუნქციის დანიშნულებას მომხმარებლის პერსპექტივიდან. ეს აუმჯობესებს კონტრაქტის წაკითხვადობას და ასევე აკმაყოფილებს template-ის linting/documentation მოთხოვნებს.
+
 A privacy-preserving sealed-bid second-price auction built using Zama's fhEVM protocol. Bids are encrypted before they
 are submitted on-chain, and the smart contract privately computes the highest bid, the second-highest bid, and the
 winner without revealing individual bid values during the auction.
@@ -533,5 +535,7 @@ cp artifacts/contracts/SealedBidAuction.sol/SealedBidAuction.json frontend/src/a
 **Gvantsa Vakhtangishvili**
 
 Privacy on Blockchain Course Project
+
+Project structure and 
 
 Built using Zama fhEVM, Solidity, Hardhat, React, Vite, MetaMask, and Sepolia Testnet.
